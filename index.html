@@ -7,34 +7,28 @@
   <link rel="stylesheet" href="css/leaflet.css" />
   <style>
     html, body, #map { height: 100%; margin: 0; padding: 0; }
+    .debug-badge { position: fixed; bottom: 10px; left: 10px; background: rgba(0,0,0,.6); color:#fff; padding:6px 8px; border-radius:6px; font:12px/1.2 sans-serif }
   </style>
 </head>
 <body>
   <div id="map"></div>
+  <div class="debug-badge">Tiles 512 – prova schemi multipli</div>
 
   <script src="js/leaflet.js"></script>
   <!-- I tuoi vettori -->
   <script src="data/Insediamenti_1.js"></script>
 
   <script>
-    // Mappa
-    const map = L.map('map', { minZoom: 0, maxZoom: 18 }).setView([45.8, 9.08], 10);
+    // === Parametri rapidi da regolare ===
+    const MAX_NATIVE = 16;        // ⬅️ ultimo livello che HAI generato davvero (16 o 17)
+    const TILE_SIZE  = 512;       // ⬅️ tiles da 512 px
+    const TMS_MODE   = false;     // ⬅️ se vedi “capovolto”, prova true
+    const TILES_ROOT = './tiles_raster'; // ⬅️ cartella accanto a index.html
 
-    // Raster tiles: PNG 512px, nativi fino a z=16
-    const tiles = L.tileLayer('./tiles_raster/{z}/{x}/{y}.png', {
-      attribution: '© raster',
-      minZoom: 0,
-      maxZoom: 18,       // puoi spingere un filo oltre (overzoom)
-      maxNativeZoom: 16, // ⬅️ ULTIMO livello che hai generato davvero
-      tileSize: 512,     // ⬅️ perché hai esportato 512px
-      tms: false,        // se vedi “capovolto” o sparizioni, prova true
-      noWrap: true
-    }).addTo(map);
+    // Mappa base
+    const map = L.map('map', { minZoom: 0, maxZoom: MAX_NATIVE + 2 }).setView([45.8, 9.08], 10);
 
-    // (Debug) log tile mancanti
-    tiles.on('tileerror', e => console.log('TILE 404:', e.tile.src));
-
-    // Layer punti (popup semplice)
+    // Layer vettoriale (popup semplice)
     const punti = L.geoJson(json_Insediamenti_1, {
       onEachFeature: (f, layer) => {
         const p = f.properties || {};
@@ -54,11 +48,64 @@
       })
     }).addTo(map);
 
-    // Centra sui punti se presenti
-    try {
-      const b = punti.getBounds();
-      if (b && b.isValid()) map.fitBounds(b);
-    } catch(e) {}
+    try { const b = punti.getBounds(); if (b && b.isValid()) map.fitBounds(b); } catch(e){}
+
+    // === Tile layer "robusto" che prova più schemi di URL ===
+    const MultiPatternTileLayer = L.GridLayer.extend({
+      createTile: function(coords, done) {
+        const tile = document.createElement('img');
+        tile.alt = `z${coords.z}-x${coords.x}-y${coords.y}`;
+        tile.decoding = 'async';
+        tile.loading = 'lazy';
+        tile.referrerPolicy = 'no-referrer';
+        tile.style.width = this.getTileSize().x + 'px';
+        tile.style.height = this.getTileSize().y + 'px';
+
+        const z = coords.z, x = coords.x, y = coords.y;
+        const pow = Math.pow(2, z);
+
+        // Se TMS, inverti Y
+        const yTms = TMS_MODE ? (pow - 1 - y) : y;
+
+        // Prova 3 schemi di percorso, in quest'ordine:
+        // 1) XYZ standard: z/x/y.png
+        // 2) Variante "QGIS 512": z/(2^z)/x_y.png
+        // 3) Variante "QGIS 512" a 3 livelli: z/(2^z)/x/y.png
+        const candidates = [
+          `${TILES_ROOT}/${z}/${x}/${yTms}.png`,
+          `${TILES_ROOT}/${z}/${pow}/${x}_${yTms}.png`,
+          `${TILES_ROOT}/${z}/${pow}/${x}/${yTms}.png`
+        ];
+
+        let i = 0;
+        const tryNext = () => {
+          if (i >= candidates.length) {
+            console.warn('Tile 404 per', z, x, yTms, candidates);
+            done(new Error('tile not found'), tile);
+            return;
+          }
+          const url = candidates[i++];
+          const img = new Image();
+          img.onload = () => { tile.src = url; done(null, tile); };
+          img.onerror = () => tryNext();
+          img.src = url;
+        };
+        tryNext();
+
+        return tile;
+      }
+    });
+
+    const tiles = new MultiPatternTileLayer({
+      tileSize: TILE_SIZE,
+      updateWhenZooming: false,
+      updateWhenIdle: true,
+      noWrap: true,
+      opacity: 1
+    }).addTo(map);
+
+    // (Facolt.) layer di controllo per attivare/disattivare i punti
+    L.control.layers(null, { 'Punti': punti }, { collapsed: true }).addTo(map);
   </script>
 </body>
 </html>
