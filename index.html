@@ -14,12 +14,7 @@
     <link rel="stylesheet" href="css/leaflet.photon.css">
 
     <style>
-      html, body, #map {
-        width: 100%;
-        height: 100%;
-        padding: 0;
-        margin: 0;
-      }
+      html, body, #map { width: 100%; height: 100%; padding: 0; margin: 0; }
     </style>
     <title>Mappa</title>
   </head>
@@ -37,18 +32,23 @@
     <script src="js/labelgun.min.js"></script>
     <script src="js/labels.js"></script>
     <script src="js/leaflet.photon.js"></script>
+
+    <!-- Vettori -->
     <script src="data/Insediamenti_1.js"></script>
 
     <script>
       var highlightLayer;
       function highlightFeature(e) {
-          highlightLayer = e.target;
-          highlightLayer.openPopup();
+        highlightLayer = e.target;
+        highlightLayer.openPopup();
       }
 
+      // ✅ Mappa: niente fitBounds “strani”; centro realistico e zoom comodo
       var map = L.map('map', {
-          zoomControl: false, maxZoom: 19, minZoom: 1
-      }).fitBounds([[-0.0314, 0.0119],[0.0050, 0.0389]]);
+        zoomControl: false,
+        minZoom: 0,
+        maxZoom: 19
+      }).setView([45.80, 9.08], 10); // ← cambia con il tuo centro
 
       var hash = new L.Hash(map);
       map.attributionControl.setPrefix(
@@ -59,79 +59,78 @@
 
       var autolinker = new Autolinker({truncate: {length: 30, location: 'smart'}});
 
-      // === BASEMAP: Tiles PNG 512px (senza zoomOffset/bounds) ===
+      // === BASEMAP: tiles PNG 256px (config standard, stabile) ===
       var tilesRaster = L.tileLayer('./tiles_raster/{z}/{x}/{y}.png', {
         attribution: '© la tua mappa',
         minZoom: 0,
         maxZoom: 19,        // quanto l’utente può zoomare
-        maxNativeZoom: 15,  // ⬅️ ultimo livello generato in QGIS
-        tileSize: 512,      // tiles più grandi
-        // zoomOffset: -1,   // ❌ tolto
-        // bounds: rasterBounds, // ❌ tolto
-        tms: false,
+        maxNativeZoom: 15,  // ⬅️ ultimo livello generato
+        tms: false,         // ❗ se le Y sono invertite, cambia a true
         noWrap: true
       }).addTo(map);
 
-      // === Marker Insediamenti ===
+      // === Layer dei punti (popup) ===
       function pop_Insediamenti_1(feature, layer) {
-          layer.on({
-              mouseout: function(e) {
-                  if (typeof layer.closePopup == 'function') {
-                      layer.closePopup();
-                  } else {
-                      layer.eachLayer(function(feature){
-                          feature.closePopup();
-                      });
-                  }
-              },
-              mouseover: highlightFeature,
-          });
-          var popupContent = '<table>'
-              + '<tr><td colspan="2">' + (feature.properties['fid'] !== null ? autolinker.link(String(feature.properties['fid'])) : '') + '</td></tr>'
-              + '<tr><th>Nome</th><td>' + (feature.properties['Nome'] !== null ? autolinker.link(String(feature.properties['Nome'])) : '') + '</td></tr>'
-              + '<tr><th>Tipo</th><td>' + (feature.properties['Tipo'] !== null ? autolinker.link(String(feature.properties['Tipo'])) : '') + '</td></tr>'
-              + '<tr><th>Descrizione</th><td>' + (feature.properties['Descrizione'] !== null ? autolinker.link(String(feature.properties['Descrizione'])) : '') + '</td></tr>'
-              + '<tr><th>Livello</th><td>' + (feature.properties['Livello'] !== null ? autolinker.link(String(feature.properties['Livello'])) : '') + '</td></tr>'
-              + '<tr><th>Regione</th><td>' + (feature.properties['Regione'] !== null ? autolinker.link(String(feature.properties['Regione'])) : '') + '</td></tr>'
-              + '</table>';
-          layer.bindPopup(popupContent, {maxHeight: 400});
+        layer.on({
+          mouseout: function(e) {
+            if (typeof layer.closePopup == 'function') { layer.closePopup(); }
+            else { layer.eachLayer(function(f){ f.closePopup(); }); }
+          },
+          mouseover: highlightFeature,
+        });
+        var p = feature.properties || {};
+        var popupContent = '<table>'
+          + '<tr><td colspan="2">' + (p['fid'] != null ? autolinker.link(String(p['fid'])) : '') + '</td></tr>'
+          + '<tr><th>Nome</th><td>'         + (p['Nome'] != null ? autolinker.link(String(p['Nome'])) : '') + '</td></tr>'
+          + '<tr><th>Tipo</th><td>'         + (p['Tipo'] != null ? autolinker.link(String(p['Tipo'])) : '') + '</td></tr>'
+          + '<tr><th>Descrizione</th><td>'  + (p['Descrizione'] != null ? autolinker.link(String(p['Descrizione'])) : '') + '</td></tr>'
+          + '<tr><th>Livello</th><td>'      + (p['Livello'] != null ? autolinker.link(String(p['Livello'])) : '') + '</td></tr>'
+          + '<tr><th>Regione</th><td>'      + (p['Regione'] != null ? autolinker.link(String(p['Regione'])) : '') + '</td></tr>'
+          + '</table>';
+        layer.bindPopup(popupContent, { maxHeight: 400 });
       }
 
       function style_Insediamenti_1_0() {
-          return {
-              radius: 4.0,
-              opacity: 1,
-              color: 'rgba(35,35,35,1.0)',
-              weight: 1,
-              fill: true,
-              fillOpacity: 1,
-              fillColor: 'rgba(190,207,80,1.0)',
-              interactive: true
-          }
+        return {
+          radius: 4.0,
+          opacity: 1,
+          color: 'rgba(35,35,35,1.0)',
+          weight: 1,
+          fill: true,
+          fillOpacity: 1,
+          fillColor: 'rgba(190,207,80,1.0)',
+          interactive: true
+        }
       }
 
       var layer_Insediamenti_1 = new L.geoJson(json_Insediamenti_1, {
-          attribution: '',
-          interactive: true,
-          dataVar: 'json_Insediamenti_1',
-          layerName: 'layer_Insediamenti_1',
-          onEachFeature: pop_Insediamenti_1,
-          pointToLayer: function (feature, latlng) {
-              return L.circleMarker(latlng, style_Insediamenti_1_0(feature));
-          }
-      });
-      map.addLayer(layer_Insediamenti_1);
+        attribution: '',
+        interactive: true,
+        dataVar: 'json_Insediamenti_1',
+        layerName: 'layer_Insediamenti_1',
+        onEachFeature: pop_Insediamenti_1,
+        pointToLayer: function (feature, latlng) {
+          return L.circleMarker(latlng, style_Insediamenti_1_0(feature));
+        }
+      }).addTo(map);
 
-      // === Layer Control ===
+      // Se vuoi centrare sui punti quando ci sono:
+      try {
+        var b = layer_Insediamenti_1.getBounds();
+        if (b && b.isValid()) map.fitBounds(b);
+      } catch(e) {}
+
+      // Controllo layer
       var overlaysTree = [
-          {label: '<img src="legend/Insediamenti_1.png" /> Insediamenti', layer: layer_Insediamenti_1},
-          {label: "Mappa Raster", layer: tilesRaster}
+        {label: '<img src="legend/Insediamenti_1.png" /> Insediamenti', layer: layer_Insediamenti_1},
+        {label: "Mappa Raster", layer: tilesRaster}
       ];
-      var lay = L.control.layers.tree(null, overlaysTree, {collapsed: true});
+      var lay = L.control.layers.tree(null, overlaysTree, { collapsed: true });
       lay.addTo(map);
 
-      L.control.zoom({position: 'topleft'}).addTo(map);
-
+      L.control.zoom({ position: 'topleft' }).addTo(map);
     </script>
   </body>
+</html>
+
 </html>
