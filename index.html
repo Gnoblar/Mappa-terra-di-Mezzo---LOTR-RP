@@ -45,7 +45,7 @@
       var map = L.map('map', {
         zoomControl: false,
         minZoom: 0,
-        maxZoom: 17
+        maxZoom: 16
       });
       var hash = new L.Hash(map);
       map.attributionControl.setPrefix(
@@ -59,9 +59,9 @@
       var basemap0 = L.tileLayer('./tiles_raster/{z}/{x}/{y}.png', {
         attribution: '© mappa raster',
         minZoom: 0,
-        maxZoom: 17,
-        maxNativeZoom: 15,   // livello massimo realmente generato
-        tileSize: 512,   // ⬅️ questo dice a Leaflet che le immagini sono 512px
+        maxZoom: 16,
+        maxNativeZoom: 16,   // livello massimo realmente generato
+        tileSize: 256,   // ⬅️ questo dice a Leaflet che le immagini sono 512px
         zoomOffset: -1,  // ⬅️ serve per riallineare i livelli
         tms: false,          // metti true SOLO se hai esportato in TMS (asse Y invertito)
         noWrap: true,
