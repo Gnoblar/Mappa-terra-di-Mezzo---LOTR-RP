@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="initial-scale=1,user-scalable=no,maximum-scale=1,width=device-width">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+
+    <link rel="stylesheet" href="css/leaflet.css">
+    <link rel="stylesheet" href="css/L.Control.Layers.Tree.css">
+    <link rel="stylesheet" href="css/qgis2web.css">
+    <link rel="stylesheet" href="css/fontawesome-all.min.css">
+    <link rel="stylesheet" href="css/leaflet.photon.css">
+
+    <style>
+      html, body, #map {
+        width: 100%;
+        height: 100%;
+        padding: 0;
+        margin: 0;
+      }
+    </style>
+    <title>Mappa</title>
+  </head>
+  <body>
+    <div id="map"></div>
+
+    <script src="js/qgis2web_expressions.js"></script>
+    <script src="js/leaflet.js"></script>
+    <script src="js/L.Control.Layers.Tree.min.js"></script>
+    <script src="js/leaflet.rotatedMarker.js"></script>
+    <script src="js/leaflet.pattern.js"></script>
+    <script src="js/leaflet-hash.js"></script>
+    <script src="js/Autolinker.min.js"></script>
+    <script src="js/rbush.min.js"></script>
+    <script src="js/labelgun.min.js"></script>
+    <script src="js/labels.js"></script>
+    <script src="js/leaflet.photon.js"></script>
+    <script src="data/Insediamenti_1.js"></script>
+
+    <script>
+      var highlightLayer;
+      function highlightFeature(e) {
+          highlightLayer = e.target;
+          highlightLayer.openPopup();
+      }
+
+      var map = L.map('map', {
+          zoomControl: false, maxZoom: 19, minZoom: 1
+      }).fitBounds([[-0.0314, 0.0119],[0.0050, 0.0389]]);
+
+      var hash = new L.Hash(map);
+      map.attributionControl.setPrefix(
+        '<a href="https://github.com/tomchadwin/qgis2web" target="_blank">qgis2web</a> · ' +
+        '<a href="https://leafletjs.com" title="Leaflet">Leaflet</a> · ' +
+        '<a href="https://qgis.org">QGIS</a>'
+      );
+
+      var autolinker = new Autolinker({truncate: {length: 30, location: 'smart'}});
+
+      // === BASEMAP: Tiles PNG 512px (senza zoomOffset/bounds) ===
+      var tilesRaster = L.tileLayer('./tiles_raster/{z}/{x}/{y}.png', {
+        attribution: '© la tua mappa',
+        minZoom: 0,
+        maxZoom: 19,        // quanto l’utente può zoomare
+        maxNativeZoom: 15,  // ⬅️ ultimo livello generato in QGIS
+        tileSize: 512,      // tiles più grandi
+        // zoomOffset: -1,   // ❌ tolto
+        // bounds: rasterBounds, // ❌ tolto
+        tms: false,
+        noWrap: true
+      }).addTo(map);
+
+      // === Marker Insediamenti ===
+      function pop_Insediamenti_1(feature, layer) {
+          layer.on({
+              mouseout: function(e) {
+                  if (typeof layer.closePopup == 'function') {
+                      layer.closePopup();
+                  } else {
+                      layer.eachLayer(function(feature){
+                          feature.closePopup();
+                      });
+                  }
+              },
+              mouseover: highlightFeature,
+          });
+          var popupContent = '<table>'
+              + '<tr><td colspan="2">' + (feature.properties['fid'] !== null ? autolinker.link(String(feature.properties['fid'])) : '') + '</td></tr>'
+              + '<tr><th>Nome</th><td>' + (feature.properties['Nome'] !== null ? autolinker.link(String(feature.properties['Nome'])) : '') + '</td></tr>'
+              + '<tr><th>Tipo</th><td>' + (feature.properties['Tipo'] !== null ? autolinker.link(String(feature.properties['Tipo'])) : '') + '</td></tr>'
+              + '<tr><th>Descrizione</th><td>' + (feature.properties['Descrizione'] !== null ? autolinker.link(String(feature.properties['Descrizione'])) : '') + '</td></tr>'
+              + '<tr><th>Livello</th><td>' + (feature.properties['Livello'] !== null ? autolinker.link(String(feature.properties['Livello'])) : '') + '</td></tr>'
+              + '<tr><th>Regione</th><td>' + (feature.properties['Regione'] !== null ? autolinker.link(String(feature.properties['Regione'])) : '') + '</td></tr>'
+              + '</table>';
+          layer.bindPopup(popupContent, {maxHeight: 400});
+      }
+
+      function style_Insediamenti_1_0() {
+          return {
+              radius: 4.0,
+              opacity: 1,
+              color: 'rgba(35,35,35,1.0)',
+              weight: 1,
+              fill: true,
+              fillOpacity: 1,
+              fillColor: 'rgba(190,207,80,1.0)',
+              interactive: true
+          }
+      }
+
+      var layer_Insediamenti_1 = new L.geoJson(json_Insediamenti_1, {
+          attribution: '',
+          interactive: true,
+          dataVar: 'json_Insediamenti_1',
+          layerName: 'layer_Insediamenti_1',
+          onEachFeature: pop_Insediamenti_1,
+          pointToLayer: function (feature, latlng) {
+              return L.circleMarker(latlng, style_Insediamenti_1_0(feature));
+          }
+      });
+      map.addLayer(layer_Insediamenti_1);
+
+      // === Layer Control ===
+      var overlaysTree = [
+          {label: '<img src="legend/Insediamenti_1.png" /> Insediamenti', layer: layer_Insediamenti_1},
+          {label: "Mappa Raster", layer: tilesRaster}
+      ];
+      var lay = L.control.layers.tree(null, overlaysTree, {collapsed: true});
+      lay.addTo(map);
+
+      L.control.zoom({position: 'topleft'}).addTo(map);
+
+    </script>
+  </body>
+</html>
