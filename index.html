@@ -1,189 +1,106 @@
 <!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8">
-    <meta http-equiv="X-UA-Compatible" content="IE=edge">
-    <meta name="viewport" content="initial-scale=1,user-scalable=no,maximum-scale=1,width=device-width">
-    <meta name="mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <link rel="stylesheet" href="css/leaflet.css">
-    <link rel="stylesheet" href="css/L.Control.Layers.Tree.css">
-    <link rel="stylesheet" href="css/qgis2web.css">
-    <link rel="stylesheet" href="css/fontawesome-all.min.css">
-    <link rel="stylesheet" href="css/leaflet.photon.css">
-    <style>
-      html, body, #map { width: 100%; height: 100%; padding: 0; margin: 0; }
-    </style>
-    <title></title>
-  </head>
-  <body>
-    <div id="map"></div>
+<html lang="it">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="initial-scale=1,width=device-width" />
+  <title>Mappa</title>
 
-    <script src="js/qgis2web_expressions.js"></script>
-    <script src="js/leaflet.js"></script>
-    <script src="js/L.Control.Layers.Tree.min.js"></script>
-    <script src="js/leaflet.rotatedMarker.js"></script>
-    <script src="js/leaflet.pattern.js"></script>
-    <script src="js/leaflet-hash.js"></script>
-    <script src="js/Autolinker.min.js"></script>
-    <script src="js/rbush.min.js"></script>
-    <script src="js/labelgun.min.js"></script>
-    <script src="js/labels.js"></script>
-    <script src="js/leaflet.photon.js"></script>
+  <!-- Leaflet da CDN (niente dipendenze locali) -->
+  <link
+    rel="stylesheet"
+    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+    crossorigin=""
+  />
+  <style>
+    html, body, #map { height: 100%; margin: 0; padding: 0; }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
 
-    <!-- Vettori -->
-    <script src="data/Insediamenti_1.js"></script>
+  <script
+    src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+    integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+    crossorigin=""
+  ></script>
 
-    <script>
-      var highlightLayer;
-      function highlightFeature(e) {
-        highlightLayer = e.target;
-        highlightLayer.openPopup();
+  <!-- (facoltativo) i tuoi punti. Se questo file manca o ha un nome variabile diverso, il try/catch sotto evita blocchi -->
+  <script src="data/Insediamenti_1.js"></script>
+
+  <script>
+    // 1) Mappa: limitiamo lo zoom al massimo livello reale generato
+    const MAX_NATIVE = 16; // <-- METTI il tuo massimo: 15 o 16 o 17
+    const map = L.map('map', { minZoom: 0, maxZoom: MAX_NATIVE }).setView([45.8, 9.08], 10);
+
+    // 2) Fallback OSM: così vedi sempre qualcosa anche se i tiles personalizzati falliscono
+    const osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      attribution: '&copy; OpenStreetMap'
+    }).addTo(map);
+
+    // 3) I TUOI TILES (XYZ 256px, z=0..MAX_NATIVE). Cambia il percorso se la cartella non è accanto all’index.
+    const tiles = L.tileLayer('./tiles_raster/{z}/{x}/{y}.png?v=3', {
+      minZoom: 0,
+      maxZoom: MAX_NATIVE,
+      maxNativeZoom: MAX_NATIVE,
+      tms: false,
+      noWrap: true
+    });
+
+    // Log utilissimo: se una tile manca vedrai l'URL preciso in console
+    tiles.on('tileerror', e => console.warn('TILE 404:', e.tile.src));
+
+    // Quando il layer si carica almeno una volta, centriamo e limitiamo la vista sui bounds reali dei tiles
+    tiles.once('load', () => {
+      const b = tiles.getBounds();
+      if (b && b.isValid()) {
+        map.fitBounds(b);
+        map.setMaxBounds(b.pad(0.02));
+        map.options.maxBoundsViscosity = 1.0;
       }
+    });
 
-      // Mappa: estendo gli zoom per usare le tile 0..17 (con overzoom fino a 19 per spingere ancora)
-      var map = L.map('map', {
-        zoomControl: false,
-        minZoom: 0,
-        maxZoom: 16
-      });
-      var hash = new L.Hash(map);
-      map.attributionControl.setPrefix(
-        '<a href="https://github.com/tomchadwin/qgis2web" target="_blank">qgis2web</a> &middot; ' +
-        '<a href="https://leafletjs.com" title="A JS library for interactive maps">Leaflet</a> &middot; ' +
-        '<a href="https://qgis.org">QGIS</a>'
-      );
-      var autolinker = new Autolinker({truncate: {length: 30, location: 'smart'}});
+    // Aggiungi i tiles personalizzati in mappa **sopra** OSM
+    tiles.addTo(map);
 
-      // ✅ Basemap: tiles locali (0..17). maxNativeZoom = 17, maxZoom = 19 per overzoom (pixel scale-up).
-      var basemap0 = L.tileLayer('./tiles_raster/{z}/{x}/{y}.png', {
-        attribution: '© mappa raster',
-        minZoom: 0,
-        maxZoom: 16,
-        maxNativeZoom: 16,   // livello massimo realmente generato
-        tms: false,          // metti true SOLO se hai esportato in TMS (asse Y invertito)
-        noWrap: true,
-        detectRetina: false,
-        keepBuffer: 4
-      }).addTo(map);
-
-      // --- UTILITÀ POPUP ---
-      function removeEmptyRowsFromPopupContent(content, feature) {
-        var tempDiv = document.createElement('div');
-        tempDiv.innerHTML = content;
-        var rows = tempDiv.querySelectorAll('tr');
-        for (var i = 0; i < rows.length; i++) {
-          var td = rows[i].querySelector('td.visible-with-data');
-          var key = td ? td.id : '';
-          if (td && td.classList.contains('visible-with-data') && feature.properties[key] == null) {
-            rows[i].parentNode.removeChild(rows[i]);
-          }
-        }
-        return tempDiv.innerHTML;
-      }
-      function addClassToPopupIfMedia(content, popup) {
-        var tempDiv = document.createElement('div');
-        tempDiv.innerHTML = content;
-        if (tempDiv.querySelector('td img')) {
-          popup._contentNode.classList.add('media');
-          setTimeout(function() { popup.update(); }, 10);
-        } else {
-          popup._contentNode.classList.remove('media');
-        }
-      }
-
-      var zoomControl = L.control.zoom({ position: 'topleft' }).addTo(map);
-      var bounds_group = new L.featureGroup([]);
-      function setBounds() {}
-
-      // ❌ RIMOSSO l'imageOverlay del raster pesante
-
-      // --- LAYER PUNTI ---
-      function pop_Insediamenti_1(feature, layer) {
-        layer.on({
-          mouseout: function(e) {
-            if (typeof layer.closePopup == 'function') {
-              layer.closePopup();
-            } else {
-              layer.eachLayer(function(feature){ feature.closePopup() });
-            }
+    // 4) PUNTI (se esistono): evitiamo che un errore qui blocchi tutta la pagina
+    try {
+      if (typeof json_Insediamenti_1 !== 'undefined') {
+        const punti = L.geoJson(json_Insediamenti_1, {
+          onEachFeature: (f, layer) => {
+            const p = f.properties || {};
+            layer.bindPopup(
+              `<table>
+                <tr><th>Nome</th><td>${p.Nome ?? ''}</td></tr>
+                <tr><th>Tipo</th><td>${p.Tipo ?? ''}</td></tr>
+                <tr><th>Descrizione</th><td>${p.Descrizione ?? ''}</td></tr>
+                <tr><th>Livello</th><td>${p.Livello ?? ''}</td></tr>
+                <tr><th>Regione</th><td>${p.Regione ?? ''}</td></tr>
+              </table>`
+            );
           },
-          mouseover: highlightFeature,
-        });
-        var popupContent =
-          '<table>' +
-          '<tr><td colspan="2">' + (feature.properties['fid'] !== null ? autolinker.link(String(feature.properties['fid']).replace(/\'/g, '\'').toLocaleString()) : '') + '</td></tr>' +
-          '<tr><th scope="row">Nome</th><td>' + (feature.properties['Nome'] !== null ? autolinker.link(String(feature.properties['Nome']).replace(/\'/g, '\'').toLocaleString()) : '') + '</td></tr>' +
-          '<tr><th scope="row">Tipo</th><td>' + (feature.properties['Tipo'] !== null ? autolinker.link(String(feature.properties['Tipo']).replace(/\'/g, '\'').toLocaleString()) : '') + '</td></tr>' +
-          '<tr><th scope="row">Descrizione</th><td>' + (feature.properties['Descrizione'] !== null ? autolinker.link(String(feature.properties['Descrizione']).replace(/\'/g, '\'').toLocaleString()) : '') + '</td></tr>' +
-          '<tr><th scope="row">Livello</th><td>' + (feature.properties['Livello'] !== null ? autolinker.link(String(feature.properties['Livello']).replace(/\'/g, '\'').toLocaleString()) : '') + '</td></tr>' +
-          '<tr><th scope="row">Regione</th><td>' + (feature.properties['Regione'] !== null ? autolinker.link(String(feature.properties['Regione']).replace(/\'/g, '\'').toLocaleString()) : '') + '</td></tr>' +
-          '</table>';
-        var content = removeEmptyRowsFromPopupContent(popupContent, feature);
-        layer.on('popupopen', function(e) { addClassToPopupIfMedia(content, e.popup); });
-        layer.bindPopup(content, { maxHeight: 400 });
+          pointToLayer: (_f, latlng) => L.circleMarker(latlng, {
+            radius: 4, color: '#232323', weight: 1, fillColor: '#bed04f', fillOpacity: 1
+          })
+        }).addTo(map);
+
+        // Se i punti hanno extent valido, usalo per centrare
+        const bp = punti.getBounds();
+        if (bp && bp.isValid()) map.fitBounds(bp);
+      } else {
+        console.info('Nota: data/Insediamenti_1.js non definisce json_Insediamenti_1 (punti non caricati).');
       }
+    } catch (err) {
+      console.warn('Impossibile caricare i punti (controlla data/Insediamenti_1.js):', err);
+    }
 
-      function style_Insediamenti_1_0() {
-        return {
-          pane: 'pane_Insediamenti_1',
-          radius: 4.0,
-          opacity: 1,
-          color: 'rgba(35,35,35,1.0)',
-          dashArray: '',
-          lineCap: 'butt',
-          lineJoin: 'miter',
-          weight: 1,
-          fill: true,
-          fillOpacity: 1,
-          fillColor: 'rgba(190,207,80,1.0)',
-          interactive: true,
-        }
-      }
-
-      map.createPane('pane_Insediamenti_1');
-      map.getPane('pane_Insediamenti_1').style.zIndex = 401;
-      map.getPane('pane_Insediamenti_1').style['mix-blend-mode'] = 'normal';
-
-      var layer_Insediamenti_1 = new L.geoJson(json_Insediamenti_1, {
-        attribution: '',
-        interactive: true,
-        dataVar: 'json_Insediamenti_1',
-        layerName: 'layer_Insediamenti_1',
-        pane: 'pane_Insediamenti_1',
-        onEachFeature: pop_Insediamenti_1,
-        pointToLayer: function (feature, latlng) {
-          var context = { feature: feature, variables: {} };
-          return L.circleMarker(latlng, style_Insediamenti_1_0(feature));
-        },
-      });
-
-      bounds_group.addLayer(layer_Insediamenti_1);
-      map.addLayer(layer_Insediamenti_1);
-
-      // Fit ai punti quando pronti; se non ci sono, centra su qualcosa di sensato
-      try {
-        var b = layer_Insediamenti_1.getBounds();
-        if (b && b.isValid()) {
-          map.fitBounds(b);
-        } else {
-          map.setView([45.80, 9.08], 10); // fallback (Como): cambia con il tuo centro
-        }
-      } catch(e) {
-        map.setView([45.80, 9.08], 10);
-      }
-
-      // Controllo layer: solo i punti (niente raster vecchio)
-      var overlaysTree = [
-        {label: '<img src="legend/Insediamenti_1.png" /> Insediamenti', layer: layer_Insediamenti_1}
-      ];
-      var lay = L.control.layers.tree(null, overlaysTree, { collapsed: true });
-      lay.addTo(map);
-
-      setBounds();
-
-      // Mantiene getBounds sugli ImageOverlay (non usati qui, ma lasciamo per compatibilità)
-      L.ImageOverlay.include({ getBounds: function () { return this._bounds; } });
-    </script>
-  </body>
+    // 5) Controllo layer per passare tra OSM e Raster
+    L.control.layers(
+      { 'OSM (fallback)': osm, 'Raster': tiles },
+      {},
+      { collapsed: false }
+    ).addTo(map);
+  </script>
+</body>
 </html>
