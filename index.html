@@ -1,89 +1,62 @@
 <!doctype html>
 <html lang="it">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="initial-scale=1,width=device-width">
-  <title>Mappa tiles 512 @ z0–17</title>
-  <link rel="stylesheet" href="css/leaflet.css">
+  <meta charset="utf-8" />
+  <meta name="viewport" content="initial-scale=1,width=device-width" />
+  <title>Mappa</title>
+  <link rel="stylesheet" href="css/leaflet.css" />
   <style>
-    html, body, #map { width: 100%; height: 100%; margin: 0; padding: 0; }
+    html, body, #map { height: 100%; margin: 0; padding: 0; }
   </style>
 </head>
 <body>
   <div id="map"></div>
 
   <script src="js/leaflet.js"></script>
-  <!-- Il tuo layer punti -->
+  <!-- I tuoi vettori -->
   <script src="data/Insediamenti_1.js"></script>
 
   <script>
-    // 1) Mappa
-    var map = L.map('map', {
-      center: [45.80, 9.08],  // cambia col tuo centro
-      zoom: 10,
-      minZoom: 0,
-      maxZoom: 19              // puoi spingerti oltre il nativo (overzoom)
-    });
+    // Mappa
+    const map = L.map('map', { minZoom: 0, maxZoom: 18 }).setView([45.8, 9.08], 10);
 
-    // 2) Basemap tiles 512px - due varianti per testare XYZ/TMS
-    var MAX_NATIVE = 17;       // ⬅️ ultimo livello che HAI generato davvero
-    var tilesXYZ = L.tileLayer('./tiles_raster/{z}/{x}/{y}.png', {
-      attribution: '© raster (XYZ)',
+    // Raster tiles: PNG 512px, nativi fino a z=16
+    const tiles = L.tileLayer('./tiles_raster/{z}/{x}/{y}.png', {
+      attribution: '© raster',
       minZoom: 0,
-      maxZoom: 19,
-      maxNativeZoom: MAX_NATIVE,
-      tileSize: 512,
-      tms: false,
+      maxZoom: 18,       // puoi spingere un filo oltre (overzoom)
+      maxNativeZoom: 16, // ⬅️ ULTIMO livello che hai generato davvero
+      tileSize: 512,     // ⬅️ perché hai esportato 512px
+      tms: false,        // se vedi “capovolto” o sparizioni, prova true
       noWrap: true
-    });
-
-    var tilesTMS = L.tileLayer('./tiles_raster/{z}/{x}/{y}.png', {
-      attribution: '© raster (TMS)',
-      minZoom: 0,
-      maxZoom: 19,
-      maxNativeZoom: MAX_NATIVE,
-      tileSize: 512,
-      tms: true,               // Y invertita
-      noWrap: true
-    });
-
-    // Attiva per default la versione XYZ (se non vedi bene, passa a TMS dal controllo layer)
-    tilesXYZ.addTo(map);
-
-    // 3) Layer punti (popup basic; se hai già uno stile diverso, tieni il tuo)
-    var punti = L.geoJson(json_Insediamenti_1, {
-      onEachFeature: function (f, layer) {
-        var p = f.properties || {};
-        var html = '<table>'
-          + '<tr><th>Nome</th><td>' + (p.Nome || '') + '</td></tr>'
-          + '<tr><th>Tipo</th><td>' + (p.Tipo || '') + '</td></tr>'
-          + '<tr><th>Descrizione</th><td>' + (p.Descrizione || '') + '</td></tr>'
-          + '<tr><th>Livello</th><td>' + (p.Livello || '') + '</td></tr>'
-          + '<tr><th>Regione</th><td>' + (p.Regione || '') + '</td></tr>'
-          + '</table>';
-        layer.bindPopup(html);
-      },
-      pointToLayer: function (f, latlng) {
-        return L.circleMarker(latlng, {
-          radius: 4,
-          color: '#232323',
-          weight: 1,
-          fillColor: '#bed04f',
-          fillOpacity: 1
-        });
-      }
     }).addTo(map);
 
-    // 4) Controllo layer (in alto a destra): scegli XYZ o TMS
-    L.control.layers(
-      { 'Raster XYZ': tilesXYZ, 'Raster TMS': tilesTMS },
-      { 'Insediamenti': punti },
-      { collapsed: false }
-    ).addTo(map);
+    // (Debug) log tile mancanti
+    tiles.on('tileerror', e => console.log('TILE 404:', e.tile.src));
 
-    // (opzionale) centra sui punti se presenti
+    // Layer punti (popup semplice)
+    const punti = L.geoJson(json_Insediamenti_1, {
+      onEachFeature: (f, layer) => {
+        const p = f.properties || {};
+        layer.bindPopup(
+          `<table>
+            <tr><th>Nome</th><td>${p.Nome || ''}</td></tr>
+            <tr><th>Tipo</th><td>${p.Tipo || ''}</td></tr>
+            <tr><th>Descrizione</th><td>${p.Descrizione || ''}</td></tr>
+            <tr><th>Livello</th><td>${p.Livello || ''}</td></tr>
+            <tr><th>Regione</th><td>${p.Regione || ''}</td></tr>
+          </table>`
+        );
+      },
+      pointToLayer: (f, latlng) => L.circleMarker(latlng, {
+        radius: 4, color: '#232323', weight: 1,
+        fillColor: '#bed04f', fillOpacity: 1
+      })
+    }).addTo(map);
+
+    // Centra sui punti se presenti
     try {
-      var b = punti.getBounds();
+      const b = punti.getBounds();
       if (b && b.isValid()) map.fitBounds(b);
     } catch(e) {}
   </script>
